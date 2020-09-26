@@ -1,10 +1,20 @@
-use std::path::Path;
-use std::fs::File;
-use std::fs;
-use std::io;
+use std::env;
+use std::io::{self, Write};
+use std::path::{Path, PathBuf};
+use std::fs::{self,File};
 use sha2::{Sha256, Digest};
 use std::error::Error;
 use image::GenericImageView;
+use filetime::FileTime;
+
+
+#[derive(Debug, Clone)]
+struct ImageData {
+    path: String,
+    dimensions: (u32, u32),
+    size: u64,
+    hash: String,
+}
 
 fn hash(file: &String) -> Result<String, io::Error> {
     let path = Path::new(file);
@@ -16,23 +26,48 @@ fn hash(file: &String) -> Result<String, io::Error> {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-    for entry in fs::read_dir("c:\\data")?  {
+    let args: Vec<String> = env::args().collect();
+    let path = PathBuf::from(&args[1]);
+    if !&path.exists() {
+        println!("Path '{}' does not exist", path.clone().into_os_string().into_string().unwrap());
+    }
+
+    let mut images : Vec<ImageData> = Vec::new();
+
+    for entry in fs::read_dir(path)?  {
         let entry = entry?;
         let path = entry.path();
 
         let metadata = fs::metadata(&path)?;
         if metadata.is_file() {
+            if  FileTime::from_last_modification_time(&metadata)== FileTime::zero() {
+                let ctime = FileTime::from_creation_time(&metadata).unwrap();
+                println!("Setting modified time to {}", &ctime);
+                filetime::set_file_mtime(&path, ctime).unwrap();
+            }
             let name = format!("{}",path.display());
-            print!("Name: {}, size: {}", name, metadata.len());
-            let img = match image::open(&name) {
-                Ok(image_file) => image_file,
-                Err(_error) => {
-                    println!(": No image");
-                    continue;
+             let dimensions = match image::open(&name) {
+                Ok(image_file) => image_file.dimensions(),
+                Err(error) => {
+                    println!("Not an image: {}. Error: {}", &name, error);
+                    (0, 0)
                 }
-            };
-            println!(", dimensions {:?}, hash: {}", img.dimensions(), hash(&name).unwrap());
+            }; 
+            images.push(ImageData{path: name.clone(), dimensions: dimensions, size: metadata.len(), hash: hash(&name).unwrap()});
+            print!(".");
         }
+        io::stdout().flush().unwrap();
+    }
+    images.sort_by(|a, b| a.hash.cmp(&b.hash));
+    let mut previous_image: ImageData  =  ImageData {path: String::new(), dimensions: (0,0), size: 0, hash: String::new()};
+    for entry in &images {
+        if previous_image.size == entry.size && previous_image.hash == entry.hash  {
+            println!{"Found duplicate"};
+            println!("  {:?}", previous_image);
+            println!("  {:?}", entry);
+            fs::rename(&entry.path, format!("{}.duplicate", &entry.path)).unwrap();
+        }
+        previous_image = Clone::clone(entry);
     }
     Ok(())
 }
