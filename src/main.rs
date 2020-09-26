@@ -4,16 +4,16 @@ use std::path::{Path, PathBuf};
 use std::fs::{self,File};
 use sha2::{Sha256, Digest};
 use std::error::Error;
-use image::GenericImageView;
+//use image::GenericImageView;
 use filetime::FileTime;
 
 
 #[derive(Debug, Clone)]
 struct ImageData {
     path: String,
-    dimensions: (u32, u32),
+    //dimensions: (u32, u32),
     size: u64,
-    hash: String,
+    //hash: String,
 }
 
 fn hash(file: &String) -> Result<String, io::Error> {
@@ -46,26 +46,30 @@ fn main() -> Result<(), Box<dyn Error>> {
                 filetime::set_file_mtime(&path, ctime).unwrap();
             }
             let name = format!("{}",path.display());
-             let dimensions = match image::open(&name) {
+/*             let dimensions = match image::open(&name) {
                 Ok(image_file) => image_file.dimensions(),
                 Err(error) => {
                     println!("Not an image: {}. Error: {}", &name, error);
                     (0, 0)
                 }
-            }; 
-            images.push(ImageData{path: name.clone(), dimensions: dimensions, size: metadata.len(), hash: hash(&name).unwrap()});
+            };  */
+            images.push(ImageData{path: name.clone(), size: metadata.len()});
             print!(".");
         }
         io::stdout().flush().unwrap();
     }
-    images.sort_by(|a, b| a.hash.cmp(&b.hash));
-    let mut previous_image: ImageData  =  ImageData {path: String::new(), dimensions: (0,0), size: 0, hash: String::new()};
+    images.sort_by(|a, b| a.size.cmp(&b.size));
+    let mut previous_image: ImageData  =  ImageData {path: String::new(), size: 0};
     for entry in &images {
-        if previous_image.size == entry.size && previous_image.hash == entry.hash  {
-            println!{"Found duplicate"};
-            println!("  {:?}", previous_image);
-            println!("  {:?}", entry);
-            fs::rename(&entry.path, format!("{}.duplicate", &entry.path)).unwrap();
+        if previous_image.size == entry.size {
+            let previous_hash = hash(&previous_image.path).unwrap();
+            let current_hash = hash(&entry.path).unwrap();
+            if previous_hash == current_hash {
+                println!{"Found duplicate"};
+                println!("  {:?}", previous_image);
+                println!("  {:?}", entry);
+                fs::rename(&entry.path, format!("{}.duplicate", &entry.path)).unwrap();    
+            }
         }
         previous_image = Clone::clone(entry);
     }

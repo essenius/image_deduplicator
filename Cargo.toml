@@ -8,5 +8,5 @@ edition = "2018"
 
 [dependencies]
 sha2 = "0.9.1"
-image = "0.23.9"
+#image = "0.23.9"
 filetime = "0.2"
