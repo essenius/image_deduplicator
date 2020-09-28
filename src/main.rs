@@ -49,19 +49,27 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let mut images : Vec<ImageData> = Vec::new();
     let mut duplicate_count = 0;
-    for entry in WalkDir::new(path) { //entry in fs::read_dir(path)?  {
+    for entry in WalkDir::new(path) { 
         let entry = entry?;
         let path = entry.path();
 
         let metadata = fs::metadata(&path)?;
         if metadata.is_file() {
-            let create_time = FileTime::from_creation_time(&metadata).unwrap();
+            let create_time : FileTime ;
+            if let Some(time) = FileTime::from_creation_time(&metadata) {
+                create_time = time;
+            } else {
+                create_time = FileTime::from_last_modification_time(&metadata);
+            }
             if  FileTime::from_last_modification_time(&metadata)== FileTime::zero() {
                 println!("Setting modified time to {}", &create_time);
                 filetime::set_file_mtime(&path, create_time).unwrap();
             }
             let name = format!("{}",path.display());
-            let is_duplicate = path.extension().unwrap() == DUPLICATE_EXTENSION;
+            let mut is_duplicate = false;
+            if let Some(extension) = path.extension() {
+                is_duplicate = extension == DUPLICATE_EXTENSION;
+            }
             if is_duplicate {
                 duplicate_count +=1;
             }
