@@ -40,48 +40,60 @@ fn add_to_logfile(original: &String, duplicate: &String) {
     println!("{}", &log_line);    
 }
 
-fn main() -> Result<(), Box<dyn Error>> {
-    let args: Vec<String> = env::args().collect();
-    let path = PathBuf::from(&args[1]);
-    if !&path.exists() {
-        println!("Path '{}' does not exist", path.clone().into_os_string().into_string().unwrap());
+fn get_create_time(metadata: &fs::Metadata) -> FileTime {
+    let create_time : FileTime ;
+    if let Some(time) = FileTime::from_creation_time(metadata) {
+        create_time = time;
+    } else {
+        create_time = FileTime::from_last_modification_time(metadata);
     }
+    return create_time;
+}
 
+fn correct_zero_modification_date(path: &Path, metadata: &fs::Metadata, create_time: &filetime::FileTime) {
+    if  FileTime::from_last_modification_time(metadata)== FileTime::zero() {
+        println!("Setting modified time to {}", create_time);
+        
+        filetime::set_file_mtime(path, *create_time).unwrap();
+    }
+}
+
+fn is_duplicate(path: &Path) -> bool {
+    let mut is_duplicate = false;
+    if let Some(extension) = path.extension() {
+        is_duplicate = extension == DUPLICATE_EXTENSION;
+    }
+    return is_duplicate;
+}
+
+fn images_in(folder: &Path) -> Vec<ImageData> {
     let mut images : Vec<ImageData> = Vec::new();
     let mut duplicate_count = 0;
-    for entry in WalkDir::new(path) { 
-        let entry = entry?;
+    
+    for entry in WalkDir::new(folder) { 
+        let entry = entry.unwrap();
         let path = entry.path();
 
-        let metadata = fs::metadata(&path)?;
+        let metadata = fs::metadata(&path).unwrap();
         if metadata.is_file() {
-            let create_time : FileTime ;
-            if let Some(time) = FileTime::from_creation_time(&metadata) {
-                create_time = time;
-            } else {
-                create_time = FileTime::from_last_modification_time(&metadata);
-            }
-            if  FileTime::from_last_modification_time(&metadata)== FileTime::zero() {
-                println!("Setting modified time to {}", &create_time);
-                filetime::set_file_mtime(&path, create_time).unwrap();
-            }
-            let name = format!("{}",path.display());
-            let mut is_duplicate = false;
-            if let Some(extension) = path.extension() {
-                is_duplicate = extension == DUPLICATE_EXTENSION;
-            }
+            let create_time = get_create_time(&metadata);
+            correct_zero_modification_date(&path, &metadata, &create_time);
+            let is_duplicate = is_duplicate(&path);
             if is_duplicate {
                 duplicate_count +=1;
             }
+            let name = format!("{}",path.display());
             images.push(ImageData{path: name.clone(), size: metadata.len(), create_time: create_time, is_duplicate: is_duplicate});
             print!("{}", if is_duplicate {"#"} else {"."});
         }
         io::stdout().flush().unwrap();
     }
     println!("Found {} files, {} existing duplicates.", &images.len(), duplicate_count);
+    return images;
+}
 
-    images.sort_by(|a, b| a.size.cmp(&b.size).then(a.create_time.cmp(&b.create_time)));
-    duplicate_count = 0;
+fn mark_duplicates(images: &mut Vec<ImageData>) {
+    let mut duplicate_count = 0;
     let mut duplicate_size = 0;
     for i in 0..images.len() {
         let base_entry = images[i].clone();
@@ -113,5 +125,18 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
     }
     println!("New duplicates found: {}, total size: {}", duplicate_count, duplicate_size);
+}
+
+fn main() -> Result<(), Box<dyn Error>> {
+    let args: Vec<String> = env::args().collect();
+    let path = PathBuf::from(&args[1]);
+    if !&path.exists() {
+        println!("Path '{}' does not exist", path.clone().into_os_string().into_string().unwrap());
+    }
+
+    let mut images = images_in(&path);
+    images.sort_by(|a, b| a.size.cmp(&b.size).then(a.create_time.cmp(&b.create_time)));
+    mark_duplicates(&mut images);
+
     Ok(())
 }
