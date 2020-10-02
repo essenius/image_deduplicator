@@ -5,7 +5,7 @@ use std::fs::{self,File, OpenOptions};
 use sha2::{Sha256, Digest};
 use std::error::Error;
 use filetime::FileTime;
-use walkdir::WalkDir;
+use walkdir::{DirEntry, WalkDir};
 
 static DUPLICATE_EXTENSION: &str = "duplicate";
 
@@ -66,26 +66,44 @@ fn is_duplicate(path: &Path) -> bool {
     return is_duplicate;
 }
 
+fn is_hidden(entry: &DirEntry) -> bool {
+    
+    entry.file_name()
+         .to_str()
+         .map(|s| s.starts_with("."))
+         .unwrap_or(false)
+}
+
 fn images_in(folder: &Path) -> Vec<ImageData> {
     let mut images : Vec<ImageData> = Vec::new();
     let mut duplicate_count = 0;
     
-    for entry in WalkDir::new(folder) { 
-        let entry = entry.unwrap();
-        let path = entry.path();
-
-        let metadata = fs::metadata(&path).unwrap();
-        if metadata.is_file() {
-            let create_time = get_create_time(&metadata);
-            correct_zero_modification_date(&path, &metadata, &create_time);
-            let is_duplicate = is_duplicate(&path);
-            if is_duplicate {
-                duplicate_count +=1;
-            }
-            let name = format!("{}",path.display());
-            images.push(ImageData{path: name.clone(), size: metadata.len(), create_time: create_time, is_duplicate: is_duplicate});
-            print!("{}", if is_duplicate {"#"} else {"."});
+    let mut walker = WalkDir::new(folder).into_iter();
+    loop {
+        let entry = match walker.next() {
+            None => break,
+            Some(Err(err)) => panic!("ERROR: {}", err),
+            Some(Ok(entry)) => entry,
+        };
+        if entry.file_type().is_dir()  {
+            if is_hidden(&entry) && entry.depth() > 0 {
+                println!("hidden: {}",  entry.path().display());
+                walker.skip_current_dir();
+            } 
+            continue;
         }
+        let path = entry.path();
+        let metadata = fs::metadata(&path).unwrap();
+
+        let create_time = get_create_time(&metadata);
+        correct_zero_modification_date(&path, &metadata, &create_time);
+        let is_duplicate = is_duplicate(&path);
+        if is_duplicate {
+            duplicate_count +=1;
+        }
+        let name = format!("{}",path.display());
+        images.push(ImageData{path: name.clone(), size: metadata.len(), create_time: create_time, is_duplicate: is_duplicate});
+        print!("{}", if is_duplicate {"#"} else {"."});
         io::stdout().flush().unwrap();
     }
     println!("Found {} files, {} existing duplicates.", &images.len(), duplicate_count);
