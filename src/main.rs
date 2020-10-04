@@ -6,6 +6,8 @@ use sha2::{Sha256, Digest};
 use std::error::Error;
 use filetime::FileTime;
 use walkdir::{DirEntry, WalkDir};
+use std::io::ErrorKind;
+
 
 static DUPLICATE_EXTENSION: &str = "duplicate";
 
@@ -29,7 +31,7 @@ fn hash(file: &String) -> Result<String, io::Error> {
 fn add_to_logfile(original: &String, duplicate: &String) {
     let dup_file = Path::new(duplicate);
     let logfile_path = dup_file.parent().unwrap().join("duplicates.log");
-    println!("{}",logfile_path.display());
+    //println!("{}",logfile_path.display());
     let logfile = OpenOptions::new()
             .append(true)
             .create(true)
@@ -82,7 +84,16 @@ fn images_in(folder: &Path) -> Vec<ImageData> {
     loop {
         let entry = match walker.next() {
             None => break,
-            Some(Err(err)) => panic!("ERROR: {}", err),
+            Some(Err(err)) => { 
+                let path = err.path().unwrap_or(Path::new("")).display();
+                if let Some(inner) = err.io_error() {
+                    if inner.kind() == ErrorKind::PermissionDenied {
+                        println!("Skipping {}: permission denied.", path);
+                        continue;
+                    }
+                }
+                panic!("ERROR: {}", err);
+            }
             Some(Ok(entry)) => entry,
         };
         if entry.file_type().is_dir()  {
@@ -113,10 +124,17 @@ fn images_in(folder: &Path) -> Vec<ImageData> {
 fn mark_duplicates(images: &mut Vec<ImageData>) {
     let mut duplicate_count = 0;
     let mut duplicate_size = 0;
+    let mut previous_percentage = 101;
     for i in 0..images.len() {
         let base_entry = images[i].clone();
         if base_entry.is_duplicate {
             continue;
+        }
+        // Per 5 percent (* 20 = * 100 /5)
+        let percentage = (i * 20 / images.len()) * 5;
+        if previous_percentage != percentage {
+            println!("{}", format!("{}%", percentage));
+            previous_percentage = percentage;
         }
         let mut j = i+1; 
         let mut base_hash_calculated = false;
@@ -136,8 +154,6 @@ fn mark_duplicates(images: &mut Vec<ImageData>) {
                     fs::rename(&images[j].path, &new_duplicate_name).unwrap(); 
                     add_to_logfile(&base_entry.path, &new_duplicate_name);
                 }
-            } else {
-                println!("Skipping duplicate {}", images[j].path);
             }
             j+=1;
         }
@@ -155,6 +171,5 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut images = images_in(&path);
     images.sort_by(|a, b| a.size.cmp(&b.size).then(a.create_time.cmp(&b.create_time)));
     mark_duplicates(&mut images);
-
     Ok(())
 }
