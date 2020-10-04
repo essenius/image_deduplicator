@@ -11,7 +11,7 @@ use std::io::ErrorKind;
 
 static DUPLICATE_EXTENSION: &str = "duplicate";
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 struct ImageData {
     path: String,
     create_time: FileTime,
