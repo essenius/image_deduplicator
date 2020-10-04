@@ -8,6 +8,7 @@ use filetime::FileTime;
 use walkdir::{DirEntry, WalkDir};
 use std::io::ErrorKind;
 
+// next step: more structure
 
 static DUPLICATE_EXTENSION: &str = "duplicate";
 
@@ -31,7 +32,6 @@ fn hash(file: &String) -> Result<String, io::Error> {
 fn add_to_logfile(original: &String, duplicate: &String) {
     let dup_file = Path::new(duplicate);
     let logfile_path = dup_file.parent().unwrap().join("duplicates.log");
-    //println!("{}",logfile_path.display());
     let logfile = OpenOptions::new()
             .append(true)
             .create(true)
