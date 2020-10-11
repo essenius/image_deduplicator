@@ -113,7 +113,7 @@ impl ImageSet {
             };
             if entry.file_type().is_dir()  {
                 if is_hidden(&entry) && entry.depth() > 0 {
-                    println!("hidden: {}",  entry.path().display());
+                    println!("Skipping hidden folder: {}",  entry.path().display());
                     walker.skip_current_dir();
                 } 
                 continue;
@@ -144,7 +144,7 @@ impl ImageSet {
             if self.images[base_entry].is_duplicate() {
                 continue;
             }
-            // Per 5 percent (* 20 = * 100 /5)
+            // show status per 5 percent (* 20 = * 100 /5)
             let percentage = (base_entry * 20 / &self.images.len()) * 5;
             if previous_percentage != percentage {
                 println!("{}", format!("{}%", percentage));
