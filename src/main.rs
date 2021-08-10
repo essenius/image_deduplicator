@@ -33,9 +33,9 @@ impl ImageData {
     fn new(path: &Path) -> ImageData {
         let metadata = fs::metadata(&path).unwrap();
         let create_time = get_create_time(&metadata);
-        correct_zero_modification_date(&path, &metadata, &create_time);
+        correct_zero_modification_date(path, &metadata, &create_time);
         let name = format!("{}", path.display());
-        ImageData { path: name.clone(), size: metadata.len(), create_time: create_time, hash: None}
+        ImageData { path: name, size: metadata.len(), create_time, hash: None}
     }
 
     fn is_duplicate(&self) -> bool {
@@ -43,7 +43,7 @@ impl ImageData {
         if let Some(extension) = Path::new(&self.path).extension() {
             is_duplicate = extension == DUPLICATE_EXTENSION;
         }
-        return is_duplicate;
+        is_duplicate
     }
 
     fn mark_duplicate(&mut self) {
@@ -76,7 +76,7 @@ fn get_create_time(metadata: &fs::Metadata) -> FileTime {
     } else {
         create_time = FileTime::from_last_modification_time(metadata);
     }
-    return create_time;
+    create_time
 }
 
 fn correct_zero_modification_date(path: &Path, metadata: &fs::Metadata, create_time: &filetime::FileTime) {
@@ -118,7 +118,7 @@ impl ImageSet {
                 } 
                 continue;
             }
-            let image = ImageData::new(&entry.path());
+            let image = ImageData::new(entry.path());
             if image.is_duplicate() {
                 duplicate_count += 1;
                 print!("#");
@@ -129,7 +129,7 @@ impl ImageSet {
             io::stdout().flush().unwrap();
         }
         println!(" Found {} files, excluding {} existing duplicates.", &images.len(), duplicate_count);
-        ImageSet { images: images }
+        ImageSet { images }
     }
     
     fn sort(&mut self) {
@@ -152,13 +152,11 @@ impl ImageSet {
             }
             let mut candidate_dup = base_entry + 1; 
             while candidate_dup < self.images.len() && &self.images[candidate_dup].size == &self.images[base_entry].size {
-                if !&self.images[candidate_dup].is_duplicate() { 
-                    if self.images[candidate_dup].hash().unwrap().eq(&self.images[base_entry].hash().unwrap()) {
-                        &self.images[candidate_dup].mark_duplicate();
-                        duplicate_count += 1;
-                        duplicate_size += &self.images[candidate_dup].size;                
-                        add_to_logfile(&self.images[base_entry].path, &self.images[candidate_dup].path);
-                    }
+                if !&self.images[candidate_dup].is_duplicate() && self.images[candidate_dup].hash().unwrap().eq(&self.images[base_entry].hash().unwrap()) {
+                    let _ = self.images[candidate_dup].mark_duplicate();
+                    duplicate_count += 1;
+                    duplicate_size += &self.images[candidate_dup].size;                
+                    add_to_logfile(&self.images[base_entry].path, &self.images[candidate_dup].path);
                 }
                 candidate_dup += 1;
             }
@@ -183,7 +181,7 @@ fn add_to_logfile(original: &String, duplicate: &String) {
 fn is_hidden(entry: &DirEntry) -> bool {    
     entry.file_name()
          .to_str()
-         .map(|s| s.starts_with("."))
+         .map(|s| s.starts_with('.'))
          .unwrap_or(false)
 }
 
